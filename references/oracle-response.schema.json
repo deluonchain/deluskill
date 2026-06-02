@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/deluonchain/deluskill/blob/main/schema/oracle-response.schema.json",
+  "$id": "https://github.com/deluonchain/deluskill/blob/main/references/oracle-response.schema.json",
   "title": "DeluOracleResponse",
   "description": "v2-full-cognition response shape returned by the delu-oracle x402 endpoint.",
   "type": "object",
@@ -139,22 +139,23 @@
     "context": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["regime_label", "regime_confidence", "base_eco_pulse", "macro_pulse"],
+      "required": ["base_eco_pulse", "macro_pulse", "pool_age_tier"],
       "properties": {
-        "regime_label": { "type": "string" },
-        "regime_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "base_eco_pulse": { "enum": ["expanding", "contracting", "flat"] },
-        "macro_pulse": { "enum": ["supportive", "neutral", "headwind"] }
+        "macro_pulse": { "enum": ["supportive", "neutral", "headwind"] },
+        "pool_age_tier": { "enum": ["fresh", "young", "mature", "veteran"] }
       }
     },
     "comparables": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["pool_age_percentile", "liquidity_tier", "turnover_ratio_24h"],
-      "properties": {
-        "pool_age_percentile": { "enum": ["fresh", "young", "mature", "veteran"] },
-        "liquidity_tier": { "enum": ["thin", "moderate", "deep", "premium"] },
-        "turnover_ratio_24h": { "type": "number" }
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["symbol", "relation"],
+        "properties": {
+          "symbol": { "type": "string" },
+          "relation": { "type": "string" }
+        }
       }
     },
     "mandate": {
@@ -173,23 +174,18 @@
       "properties": {
         "action": { "enum": ["enter", "watch", "avoid"] },
         "entry_zone": {
-          "oneOf": [
-            { "type": "null" },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["low", "high"],
-              "properties": {
-                "low": { "type": "number" },
-                "high": { "type": "number" }
-              }
-            }
-          ]
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["low", "high"],
+          "properties": {
+            "low": { "type": "number" },
+            "high": { "type": "number" }
+          }
         },
         "stop_loss": { "type": ["number", "null"] },
-        "stop_basis": { "type": ["string", "null"] },
-        "size_hint_pct": { "type": ["number", "null"] },
-        "size_basis": { "type": ["string", "null"] },
+        "stop_basis": { "type": "string" },
+        "size_hint_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "size_basis": { "type": "string" },
         "horizon": { "type": "string" },
         "invalidation": { "type": "string" }
       }
