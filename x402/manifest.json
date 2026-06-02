@@ -1,0 +1,17 @@
+{
+  "name": "delu-oracle",
+  "version": "v2-full-cognition",
+  "description": "Full-cognition token oracle for Base. Returns 0-100 score, 5-value verdict, structured signals/context/comparables, and a tactician mandate.",
+  "endpoint": "https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle",
+  "methods": ["GET"],
+  "routes": [
+    {
+      "path": "/analyze/{ca}",
+      "method": "GET",
+      "query": { "chain": "base" },
+      "price": { "amount": "0.25", "currency": "USDC", "network": "base" }
+    }
+  ],
+  "schemaRef": "schema/oracle-response.schema.json",
+  "publisher": "deluonchain"
+}
