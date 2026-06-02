@@ -1,0 +1,35 @@
+{
+  "name": "@deluonchain/deluskill",
+  "version": "2.0.0",
+  "description": "Delu Oracle v2 — full-cognition token analysis on Base via x402.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "delu",
+    "oracle",
+    "base",
+    "x402",
+    "cognition",
+    "bankr"
+  ],
+  "files": [
+    "dist/",
+    "src/",
+    "schema/",
+    "x402/",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deluonchain/deluskill.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
