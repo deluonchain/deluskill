@@ -28,6 +28,3 @@ Any bankr-compatible agent that supports skill installation can install this ski
 https://github.com/deluonchain/deluskill
 ```
 
-## License
-
-MIT — see [LICENSE](./LICENSE).
