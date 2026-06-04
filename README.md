@@ -1,30 +1,15 @@
 # deluskill — Delu Oracle
 
-A bankr skill that gives any agent access to full-cognition token analysis for Base chain tokens via the `delu-oracle` x402 API.
+Delu Oracle is an x402-protected API skill for full-cognition token analysis on Base. One request against a Base EVM contract address returns a verdict, 0–100 score, confidence, signal breakdown, market context, comparable tokens, and a tactician mandate with entry zone, stop loss, size hint, horizon, and invalidations.
 
-**Endpoint:** `https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle`
-**Price:** $0.25 USDC per call on Base mainnet
-**Payment:** x402 — pay-per-call, no API key, no account.
+- Endpoint base: `https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle`
+- Price: $0.25 USDC per call on Base
+- Payment: x402, EIP-3009
 
-See [`SKILL.md`](./SKILL.md) for the full skill definition and call examples. See [`references/`](./references) for response schema and mandate field reference.
+See [`SKILL.md`](./SKILL.md) for the complete API spec.
 
-## What it does
+Reference docs:
 
-One call against a Base EVM contract address returns:
-
-- a verdict (`strong_buy` / `buy` / `hold` / `avoid` / `drop`)
-- a 0–100 score and 0–1 confidence
-- per-dimension signals (momentum, flow, structure, volatility, liquidity)
-- market context (regime, base-eco pulse, macro)
-- up to 5 comparable base-eco tokens
-- a tactician mandate (entry zone, stop loss, size hint, horizon, invalidations)
-- english summary, drivers, risks
-
-## Install
-
-Any bankr-compatible agent that supports skill installation can install this skill by repo URL:
-
-```
-https://github.com/deluonchain/deluskill
-```
-
+- [`references/response-schema.md`](./references/response-schema.md) — full response schema
+- [`references/mandate-fields.md`](./references/mandate-fields.md) — tactician mandate field logic
+- [`references/external-clients.md`](./references/external-clients.md) — optional recipes for standalone clients outside agent runtimes
