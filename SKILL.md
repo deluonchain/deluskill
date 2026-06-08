@@ -1,50 +1,86 @@
----
-name: delu-oracle
-description: |
-  Pure API spec for the Delu Oracle x402 endpoint. Use it when an agent needs a full-cognition report for a Base EVM token contract: verdict, score, confidence, signal breakdown, context, comparables, and tactician mandate fields.
----
-
 # delu-oracle
 
-Delu Oracle returns a full-cognition token analysis report for a Base EVM contract address: verdict, 0–100 score, confidence, signal breakdown, market context, comparable tokens, and a tactician mandate with entry zone, stop loss, size hint, horizon, and invalidations.
+Delu Oracle returns a full-cognition token analysis report for a Base EVM contract address: a rich narrative summary, verdict, 0–100 score, confidence, signal breakdown, market context, comparable tokens, and a tactician mandate with entry zone, stop loss, size hint, horizon, and invalidations.
+
+Scout, auditor, and quant are computed server-side on every call — no enrichment POST body required. Social signal (checkr) is opt-in via `?social=true` or via POST body.
 
 ## Endpoint
 
-`GET https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze?ca={ca}`
+`GET https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle`
 
 Base is the only supported chain — no chain parameter needed.
 
 ## Parameters
 
-| Parameter | Location | Required | Validation |
-|---|---:|---:|---|
-| `ca` | query | yes | Must be a 0x-prefixed EVM contract address: `0x` followed by 40 hex characters. |
+| Parameter | Location | Required | Notes |
+|---|---|---|---|
+| `ca` | query | yes | 0x-prefixed EVM contract address (40 hex chars) |
+| `social` | query | no | Pass `?social=true` to enable checkr social enrichment (+$0.45, billed to caller) |
+
+## Social enrichment — opt-in
+
+By default, `observed.social` returns `{ "status": "unavailable" }`.
+
+To enable social signal, either:
+
+**Option A — query param (caller handles checkr):**
+Pass `?social=true` — the caller is expected to POST `checkr_meta` in the request body (see POST body below).
+
+**Option B — POST body:**
+POST `{ "checkr_meta": { ... }, "social_score": 0.72 }` directly. The oracle folds it into `observed.social` and the `deluBlend` fusion score.
+
+`checkr_meta` fields used by the oracle:
+- `sentiment_score` — 0–1 normalized sentiment
+- `momentum` — mention momentum
+- `mention_velocity` — mentions per hour
+- `influencer_hits` — influencer signal count
+
+`social_score` — raw 0–1 float, used directly in `deluBlend` when `checkr_meta` is absent.
+
+## POST body (optional enrichment)
+
+All fields are optional. When provided, they override the server-side computed values.
+
+```json
+{
+  "social_score": 0.72,
+  "checkr_meta": { "sentiment_score": 0.68, "momentum": 1.2, "mention_velocity": 4.1, "influencer_hits": 3 },
+  "scout":   { "viabilityScore": 85, "smartMoney": true, "capitalInflowRatio": 0.12, "buyPressure": 0.61, "bucket": "tier1" },
+  "auditor": { "verdict": "SAFE", "safetyScore": 91, "hardFail": false },
+  "quant":   { "finalQuantScore": 0.38 }
+}
+```
 
 ## Response schema summary
 
 Returns JSON with:
 
-- `oracle_version`, `ca`, `chain`, `symbol`
-- `verdict`: one of `strong_buy`, `buy`, `hold`, `avoid`, `drop`
+- `ca`, `chain`, `oracle_version`
+- `verdict`: `strong_buy` | `buy` | `hold` | `avoid` | `drop`
 - `score`: 0–100 fused cognition score
 - `confidence`: 0–1 data quality and signal agreement score
+- `narrative`: rich human-readable paragraph — verdict, regime, price action, structure, volume, flow, ATR, macro, safety, mandate close
+- `drivers`: string array — top bullish factors
+- `risks`: string array — top bearish factors / risks
+- `observed.market`: price, liquidity, volume, ATR, pool age, dex
+- `observed.regime`: label, confidence
+- `observed.social`: checkr enrichment when available, else `{ "status": "unavailable" }`
+- `observed.deluagent`: scout, auditor, quant — always populated server-side
 - `signals`: momentum, flow, structure, volatility, liquidity
-- `context`: regime, Base ecosystem pulse, macro context
-- `observed`: raw signal inputs including social and deluagent cognition blocks
-- `comparables`: comparable Base ecosystem tokens
-- `mandate`: entry zone `[low, high]`, stop loss, size hint (% of portfolio), horizon, invalidations `string[]`
-- `summary`, `drivers`, `risks`
+- `context`: regime_label, regime_confidence, base_eco_pulse, macro_pulse
+- `comparables`: pool_age_band, liquidity_tier, turnover_ratio
+- `mandate`: action, entry_zone `[low, high]`, stop_loss, stop_basis, size_hint_pct, size_basis, horizon, invalidations `string[]`
 
 See [`references/response-schema.md`](./references/response-schema.md) for the full field-by-field schema and [`references/mandate-fields.md`](./references/mandate-fields.md) for mandate construction details.
 
 ## Error codes
 
 | Status | Meaning |
-|---:|---|
-| `400` | Bad `ca` value, malformed address, or no supported Base pair found. |
-| `402` | Payment required, missing payment, invalid payment, insufficient USDC, or failed settlement. |
-| `404` | Unknown token or no reportable token data found. |
-| `5xx` | Oracle or upstream service failure. Retry later. |
+|---|---|
+| `400` | Bad `ca` value, malformed address, or no supported Base pair found |
+| `402` | Payment required, missing payment, invalid payment, or failed settlement |
+| `404` | Unknown token or no reportable token data found |
+| `5xx` | Oracle or upstream service failure — retry later |
 
 ## Pricing
 
@@ -52,72 +88,87 @@ $0.25 USDC on Base per call (x402, EIP-3009).
 
 ## Payment
 
-This endpoint is x402-protected. Your agent's x402 client will receive a `402` with payment requirements, sign an EIP-3009 `transferWithAuthorization` for 0.25 USDC on Base, retry with `X-PAYMENT`, and receive the response plus an `X-PAYMENT-RESPONSE` settlement receipt. You do not need to implement that handshake — every x402 client (Bankr, Claude + x402 MCP, x402-fetch, the x402 Python SDK, etc.) implements it.
+This endpoint is x402-protected. Your agent's x402 client receives a `402` with payment requirements, signs an EIP-3009 `transferWithAuthorization` for 0.25 USDC on Base, retries with `X-PAYMENT`, and receives the response plus an `X-PAYMENT-RESPONSE` settlement receipt. Every x402 client (Bankr, Claude + x402 MCP, x402-fetch, x402 Python SDK) implements this handshake automatically.
 
-## HTTP flow example
+## Example response
 
-```bash
-# 1. First request returns 402 with payment requirements.
-curl -i \
-  "https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze?ca=0x22af33fe49fd1fa80c7149773dde5890d3c76f3b"
-
-# 2. Your x402 client signs the EIP-3009 authorization.
-PAYMENT="<x402-client-generated-payment-payload>"
-
-# 3. Retry with X-PAYMENT.
-curl -i \
-  -H "X-PAYMENT: ${PAYMENT}" \
-  "https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze?ca=0x22af33fe49fd1fa80c7149773dde5890d3c76f3b"
-
-# HTTP/2 200
-# {
-#   "oracle_version": "v2-full-cognition",
-#   "ca": "0x22af33fe49fd1fa80c7149773dde5890d3c76f3b",
-#   "chain": "base",
-#   "symbol": "BNKR",
-#   "verdict": "strong_buy",
-#   "score": 77,
-#   "confidence": 0.62,
-#   "signals": {
-#     "momentum": "bullish",
-#     "flow": "neutral",
-#     "structure": "markdown",
-#     "volatility": "low",
-#     "liquidity": "deep"
-#   },
-#   "context": {
-#     "regime": "BULL_CHOP",
-#     "regime_confidence": 0.62,
-#     "base_eco_pulse": "bearish",
-#     "macro_pulse": "risk-off"
-#   },
-#   "observed": {
-#     "social": { "sentiment": 0.30, "momentum": 0, "mentions_per_hour": 0 },
-#     "deluagent": {
-#       "scout": { "viabilityScore": 78, "smartMoney": false, "bucket": "tier1" },
-#       "auditor": { "verdict": "SAFE", "safetyScore": 93, "hardFail": false },
-#       "quant": { "quantScore": 32, "regime": "TRENDING_DOWN", "RSI": 32 }
-#     }
-#   },
-#   "comparables": [],
-#   "mandate": {
-#     "action": "ENTER",
-#     "entry_zone": [0.000491, 0.000537],
-#     "stop_loss": 0.000470,
-#     "size_hint_pct": 4.87,
-#     "horizon": "1h-4h",
-#     "invalidations": [
-#       "close below entry",
-#       "regime flip away from BULL_CHOP",
-#       "liquidity drops below $50k"
-#     ]
-#   },
-#   "summary": "BNKR scores 77/100 in a bull chop regime with moderate confidence.",
-#   "drivers": ["liquidity at $2.26M", "vol24h at $544k"],
-#   "risks": ["h24 price change -14.79%", "structure in markdown phase"]
-# }
+```json
+{
+  "ca": "0x22af33fe49fd1fa80c7149773dde5890d3c76f3b",
+  "chain": "base",
+  "score": 46,
+  "verdict": "hold",
+  "confidence": 0.55,
+  "narrative": "BNKR scores 46/100 — hold — in a mixed regime (low conviction, 0.11). Price action is mixed: +0.80% on the hour but -4.55% on the day — short-term bounce against a broader downtrend. Structure is in markdown — price is below prior range lows, sellers in control. Volume is $163k over 24h against $2.33M liquidity (turnover 7.0%). Flow is balanced — high transaction intensity. ATR(14) at 2.32% — normal volatility. Base ecosystem flat, macro is neutral. Safety check: SAFE — no hard fails, liquidity and volume thresholds met. Social signal: unavailable on this call — pass checkr_meta in POST body for sentiment enrichment. Mandate: WATCH. No clean entry yet — wait for structure to resolve. Signal confidence: moderate (0.55) — partial data, treat sizing conservatively.",
+  "drivers": [
+    "liquidity at $2.33M — deep enough for clean execution",
+    "vol24h at $163k — strong participation"
+  ],
+  "risks": [
+    "structure in markdown phase — downtrend continuation risk",
+    "h1 momentum diverges from h24 trend — directional uncertainty"
+  ],
+  "observed": {
+    "market": {
+      "symbol": "BNKR",
+      "price_usd": 0.0005252,
+      "liquidity_usd": 2329813.59,
+      "volume_h1": 1588.2,
+      "volume_h24": 162806.17,
+      "price_change_h1": 0.8,
+      "price_change_h6": -0.37,
+      "price_change_h24": -4.55,
+      "atr_pct_1h": 2.32,
+      "pool_age_days": 552.8,
+      "dex_id": "uniswap",
+      "raw_ohlcv_used": true
+    },
+    "regime": { "label": "MIXED", "confidence": 0.11 },
+    "social": { "status": "unavailable", "note": "pass checkr_meta or social_score in POST body to enable" },
+    "deluagent": {
+      "scout":   { "viabilityScore": 90, "smartMoney": false, "capitalInflowRatio": 0.0699, "buyPressure": 0.4673, "bucket": "tier1", "source": "internal" },
+      "auditor": { "verdict": "SAFE", "safetyScore": 100, "hardFail": false, "hardFails": [], "source": "internal" },
+      "quant":   { "quantScore": 46.4, "regime": "MIXED", "structure_phase": "markdown", "atr_pct_1h": 2.32, "source": "internal" }
+    }
+  },
+  "signals": {
+    "momentum":   { "direction": "bullish", "strength": "weak", "h1_aligned_with_h24": false },
+    "flow":       { "buyer_pressure": "balanced", "net_flow_h24_pct": -33.4, "txn_intensity": "high", "data_quality": "estimated" },
+    "structure":  { "state": "markdown", "bias": "bearish" },
+    "volatility": { "regime": "normal", "atr_pct_1h": 2.32, "atr_pct_band": "p25-p50" },
+    "liquidity":  { "depth_tier": "premium", "liquidity_to_volume_ratio": 14.31 }
+  },
+  "context": {
+    "regime_label": "MIXED",
+    "regime_confidence": 0.11,
+    "base_eco_pulse": "flat",
+    "macro_pulse": "neutral"
+  },
+  "comparables": {
+    "pool_age_band": "veteran (>180d)",
+    "liquidity_tier": "premium",
+    "turnover_ratio": 0.0699
+  },
+  "mandate": {
+    "action": "WATCH",
+    "entry_zone": [0.0005191, 0.00052886],
+    "stop_loss": 0.000513,
+    "stop_basis": "1x ATR (2.32% of price)",
+    "size_hint_pct": 4.58,
+    "size_basis": "kelly-lite: regime=MIXED, confidence=0.55",
+    "horizon": "30m-2h",
+    "invalidations": [
+      "close below 0.000513",
+      "regime flip away from MIXED",
+      "liquidity drops below $50k",
+      "structure confirms markdown continuation"
+    ]
+  },
+  "timestamp": "2026-06-08T23:14:54.823Z",
+  "oracle_version": "v2-full-cognition"
+}
 ```
 
 ## External client recipes
 
-Agents running inside a runtime with x402 support do not need client setup code in this spec. Optional standalone-client recipes live in [`references/external-clients.md`](./references/external-clients.md).
+Optional standalone-client recipes live in [`references/external-clients.md`](./references/external-clients.md).
