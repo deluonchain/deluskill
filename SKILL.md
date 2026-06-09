@@ -1,6 +1,6 @@
 ---
 name: delu-oracle
-version: 7
+version: 8
 description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Returns verdict, 0–100 score, signal breakdown, market context, comparables, and a tactician mandate.
 ---
 
@@ -96,6 +96,18 @@ The quant score uses regime-adaptive weights from `DEFAULT_PRIORS`. In a bull re
 
 Structure weight is always 0.25. The remaining 0.75 is split across momentum/volume/inflow per the table above.
 
+## WATCH mandate — null position fields
+
+When `verdict` is `hold`, the mandate action is `WATCH`. No position is being entered, so all position-specific fields are `null`:
+
+- `entry_zone: null`
+- `stop_loss: null`
+- `stop_basis: null`
+- `size_hint_pct: null`
+- `size_basis: null`
+
+Only `horizon` and `invalidations` are populated for WATCH — they describe conditions to monitor, not a trade to execute.
+
 ## Response schema summary
 
 Returns JSON with:
@@ -104,7 +116,7 @@ Returns JSON with:
 - `verdict`: `strong_buy` | `buy` | `hold` | `avoid` | `drop`
 - `score`: 0–100 fused cognition score
 - `confidence`: 0–1 data quality and signal agreement score
-- `narrative`: rich human-readable paragraph — verdict, regime, price action, structure, volume, flow, ATR, macro, safety, mandate close
+- `summary`: rich human-readable paragraph — verdict, regime, price action, structure, volume, flow, ATR, macro, safety, mandate close
 - `drivers`: string array — top bullish factors
 - `risks`: string array — top bearish factors / risks
 - `observed.market`: price, liquidity, volume, ATR, pool age, dex
@@ -112,9 +124,12 @@ Returns JSON with:
 - `observed.social`: checkr enrichment when available, else `{ "status": "unavailable" }`
 - `observed.deluagent`: scout, auditor, quant — always populated server-side
 - `signals`: momentum, flow, structure, volatility, liquidity
+- `signals.flow.net_flow_h1_pct`: h1-derived net flow percentage (buyer pressure ratio from h1 txn data)
 - `context`: regime_label, regime_confidence, base_eco_pulse, macro_pulse
-- `comparables`: pool_age_band, liquidity_tier, turnover_ratio, atr_pct_1h
-- `mandate`: action, entry_zone `[low, high]`, stop_loss, stop_basis, size_hint_pct, size_basis, horizon, invalidations `string[]`
+- `comparables`: pool_age_band, liquidity_tier, turnover_ratio, atr_pct_1h (real ATR, not null)
+- `mandate`: action, entry_zone, stop_loss, stop_basis, size_hint_pct, size_basis, horizon, invalidations
+
+Pool age veteran threshold is 60 days — pools older than 60d suppress auditor noise from the summary narrative.
 
 See [`references/response-schema.md`](./references/response-schema.md) for the full field-by-field schema and [`references/mandate-fields.md`](./references/mandate-fields.md) for mandate construction details.
 
@@ -144,10 +159,10 @@ This endpoint is x402-protected. Your agent's x402 client receives a `402` with 
   "score": 46,
   "verdict": "hold",
   "confidence": 0.55,
-  "narrative": "BNKR scores 46/100 — hold — in a mixed regime (low conviction, 0.11). Price action is mixed: +0.80% on the hour but -4.55% on the day — short-term bounce against a broader downtrend. Structure is in markdown — price is below prior range lows, sellers in control. Volume is $163k over 24h against $2.33M liquidity (turnover 7.0%). Flow is balanced — high transaction intensity. ATR(14) at 2.32% — normal volatility. Base ecosystem flat, macro is neutral. Safety check: SAFE — no hard fails, liquidity and volume thresholds met. Social signal: unavailable on this call — pass ?social=true to enable checkr enrichment. Mandate: WATCH. No clean entry yet — wait for structure to resolve. Signal confidence: moderate (0.55) — partial data, treat sizing conservatively.",
+  "summary": "BNKR scores 46/100 — hold — in a mixed regime (low conviction, 0.11). Price action is mixed: +0.80% on the hour but -4.55% on the day — short-term bounce against a broader downtrend. Structure is in markdown — price is below prior range lows, sellers in control. Volume is $163k over 24h against $2.33M liquidity (turnover 7.0%). Flow is balanced — high transaction intensity. ATR(14) at 2.32% — normal volatility. Base ecosystem flat, macro is neutral. Safety check: SAFE — no hard fails. Mandate: WATCH. No clean entry yet — wait for structure to resolve.",
   "drivers": [
-    "liquidity at $2.33M — deep enough for clean execution",
-    "vol24h at $163k — strong participation"
+    "premium liquidity ($2.33M) — deep execution headroom",
+    "vol24h $163k — strong participation"
   ],
   "risks": [
     "structure in markdown phase — downtrend continuation risk",
@@ -173,12 +188,20 @@ This endpoint is x402-protected. Your agent's x402 client receives a `402` with 
     "deluagent": {
       "scout":   { "viabilityScore": 90, "smartMoney": false, "capitalInflowRatio": 0.0699, "buyPressure": 0.4673, "bucket": "tier1", "source": "internal" },
       "auditor": { "verdict": "SAFE", "safetyScore": 100, "hardFail": false, "hardFails": [], "source": "internal" },
-      "quant":   { "quantScore": 46.4, "regime": "MIXED", "structure_phase": "markdown", "atr_pct_1h": 2.32, "source": "internal", "weights_used": { "momentum": 0.35, "volume": 0.30, "inflow": 0.35, "structure": 0.25 } }
+      "quant":   {
+        "quantScore": 46.4,
+        "regime": "MIXED",
+        "structure_phase": "markdown",
+        "atr_pct_1h": 2.32,
+        "volatility_regime": "normal",
+        "source": "internal",
+        "weights_used": { "momentum": 0.35, "volume": 0.30, "inflow": 0.35, "structure": 0.25 }
+      }
     }
   },
   "signals": {
     "momentum":   { "direction": "bullish", "strength": "weak", "h1_aligned_with_h24": false },
-    "flow":       { "buyer_pressure": "balanced", "net_flow_h24_pct": -33.4, "txn_intensity": "high", "data_quality": "full" },
+    "flow":       { "buyer_pressure": "balanced", "net_flow_h1_pct": -33.4, "txn_intensity": "high", "data_quality": "full" },
     "structure":  { "state": "markdown", "bias": "bearish" },
     "volatility": { "regime": "normal", "atr_pct_1h": 2.32, "atr_pct_band": "p25-p50" },
     "liquidity":  { "depth_tier": "premium", "liquidity_to_volume_ratio": 14.31 }
@@ -197,19 +220,18 @@ This endpoint is x402-protected. Your agent's x402 client receives a `402` with 
   },
   "mandate": {
     "action": "WATCH",
-    "entry_zone": [0.0005191, 0.00052886],
-    "stop_loss": 0.000513,
-    "stop_basis": "1x ATR (2.32% of price)",
-    "size_hint_pct": 4.58,
-    "size_basis": "kelly-lite: regime=MIXED, confidence=0.55",
+    "entry_zone": null,
+    "stop_loss": null,
+    "stop_basis": null,
+    "size_hint_pct": null,
+    "size_basis": null,
     "horizon": "30m-2h",
     "invalidations": [
-      "close below 0.000513",
       "regime flip away from MIXED",
       "structure confirms markdown continuation"
     ]
   },
-  "timestamp": "2026-06-08T23:14:54.823Z",
+  "timestamp": "2026-06-09T00:00:00.000Z",
   "oracle_version": "v2-full-cognition"
 }
 ```
