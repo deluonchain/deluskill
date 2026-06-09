@@ -1,12 +1,20 @@
+---
+name: delu-oracle
+version: 6
+description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Returns verdict, 0–100 score, signal breakdown, market context, comparables, and a tactician mandate.
+---
+
 # delu-oracle
 
 Delu Oracle returns a full-cognition token analysis report for a Base EVM contract address: a rich narrative summary, verdict, 0–100 score, confidence, signal breakdown, market context, comparable tokens, and a tactician mandate with entry zone, stop loss, size hint, horizon, and invalidations.
 
-Scout, auditor, and quant are computed server-side on every call — no enrichment POST body required. Social signal (checkr) is opt-in via `?social=true` or via POST body.
+Scout, auditor, and quant are computed server-side on every call — no enrichment POST body required. Social signal (checkr) is opt-in via `?social=true`.
 
 ## Endpoint
 
-`GET https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle`
+```
+GET https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/{ca}
+```
 
 Base is the only supported chain — no chain parameter needed.
 
@@ -14,28 +22,50 @@ Base is the only supported chain — no chain parameter needed.
 
 | Parameter | Location | Required | Notes |
 |---|---|---|---|
-| `ca` | query | yes | 0x-prefixed EVM contract address (40 hex chars) |
+| `ca` | path | yes | 0x-prefixed EVM contract address (40 hex chars) |
 | `social` | query | no | Pass `?social=true` to enable checkr social enrichment (+$0.45, billed to caller) |
 
-## Social enrichment — opt-in
+## Social enrichment — opt-in two-step flow
 
 By default, `observed.social` returns `{ "status": "unavailable" }`.
 
-To enable social signal, either:
+When `?social=true` is passed, the skill executes a two-step flow:
 
-**Option A — query param (caller handles checkr):**
-Pass `?social=true` — the caller is expected to POST `checkr_meta` in the request body (see POST body below).
+**Step 1 — fetch checkr signal for the CA:**
 
-**Option B — POST body:**
-POST `{ "checkr_meta": { ... }, "social_score": 0.72 }` directly. The oracle folds it into `observed.social` and the `deluBlend` fusion score.
+```
+GET https://api.checkr.social/v1/token/{ca}
+```
 
-`checkr_meta` fields used by the oracle:
-- `sentiment_score` — 0–1 normalized sentiment
-- `momentum` — mention momentum
-- `mention_velocity` — mentions per hour
-- `influencer_hits` — influencer signal count
+Use the `call_x402_endpoint` tool (or equivalent) with the CA directly — no symbol lookup needed.
 
-`social_score` — raw 0–1 float, used directly in `deluBlend` when `checkr_meta` is absent.
+**Step 2 — POST to oracle with checkr_meta body:**
+
+Map the checkr response fields and POST to the oracle endpoint:
+
+```json
+{
+  "social_score": <ais normalized to 0-1>,
+  "checkr_meta": {
+    "sentiment_score": <ais>,
+    "momentum": <velocity>,
+    "mention_velocity": <velocity>,
+    "influencer_hits": <Math.round(cascade_multiplier)>
+  }
+}
+```
+
+Field mapping:
+
+| checkr field | oracle field |
+|---|---|
+| `ais` | `sentiment_score` + `social_score` (already 0-1) |
+| `velocity` | `momentum` + `mention_velocity` |
+| `cascade_multiplier` | `influencer_hits` (round to int) |
+
+The oracle folds `checkr_meta` into `observed.social` and blends it into `deluBlend` at 25% weight.
+
+**Fallback:** if the checkr fetch fails for any reason, silently fall back to a plain GET (quant-only, no social). Do not halt or surface the error to the user.
 
 ## POST body (optional enrichment)
 
@@ -84,7 +114,7 @@ See [`references/response-schema.md`](./references/response-schema.md) for the f
 
 ## Pricing
 
-$0.25 USDC on Base per call (x402, EIP-3009).
+$0.25 USDC on Base per call (x402, EIP-3009). Social enrichment adds $0.45 (checkr API cost, billed to caller).
 
 ## Payment
 
@@ -99,7 +129,7 @@ This endpoint is x402-protected. Your agent's x402 client receives a `402` with 
   "score": 46,
   "verdict": "hold",
   "confidence": 0.55,
-  "narrative": "BNKR scores 46/100 — hold — in a mixed regime (low conviction, 0.11). Price action is mixed: +0.80% on the hour but -4.55% on the day — short-term bounce against a broader downtrend. Structure is in markdown — price is below prior range lows, sellers in control. Volume is $163k over 24h against $2.33M liquidity (turnover 7.0%). Flow is balanced — high transaction intensity. ATR(14) at 2.32% — normal volatility. Base ecosystem flat, macro is neutral. Safety check: SAFE — no hard fails, liquidity and volume thresholds met. Social signal: unavailable on this call — pass checkr_meta in POST body for sentiment enrichment. Mandate: WATCH. No clean entry yet — wait for structure to resolve. Signal confidence: moderate (0.55) — partial data, treat sizing conservatively.",
+  "narrative": "BNKR scores 46/100 — hold — in a mixed regime (low conviction, 0.11). Price action is mixed: +0.80% on the hour but -4.55% on the day — short-term bounce against a broader downtrend. Structure is in markdown — price is below prior range lows, sellers in control. Volume is $163k over 24h against $2.33M liquidity (turnover 7.0%). Flow is balanced — high transaction intensity. ATR(14) at 2.32% — normal volatility. Base ecosystem flat, macro is neutral. Safety check: SAFE — no hard fails, liquidity and volume thresholds met. Social signal: unavailable on this call — pass ?social=true to enable checkr enrichment. Mandate: WATCH. No clean entry yet — wait for structure to resolve. Signal confidence: moderate (0.55) — partial data, treat sizing conservatively.",
   "drivers": [
     "liquidity at $2.33M — deep enough for clean execution",
     "vol24h at $163k — strong participation"
@@ -124,7 +154,7 @@ This endpoint is x402-protected. Your agent's x402 client receives a `402` with 
       "raw_ohlcv_used": true
     },
     "regime": { "label": "MIXED", "confidence": 0.11 },
-    "social": { "status": "unavailable", "note": "pass checkr_meta or social_score in POST body to enable" },
+    "social": { "status": "unavailable", "note": "pass ?social=true to enable checkr enrichment" },
     "deluagent": {
       "scout":   { "viabilityScore": 90, "smartMoney": false, "capitalInflowRatio": 0.0699, "buyPressure": 0.4673, "bucket": "tier1", "source": "internal" },
       "auditor": { "verdict": "SAFE", "safetyScore": 100, "hardFail": false, "hardFails": [], "source": "internal" },
