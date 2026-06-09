@@ -1,6 +1,6 @@
 ---
 name: delu-oracle
-version: 6
+version: 7
 description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Returns verdict, 0–100 score, signal breakdown, market context, comparables, and a tactician mandate.
 ---
 
@@ -81,6 +81,21 @@ All fields are optional. When provided, they override the server-side computed v
 }
 ```
 
+## Quant scoring — regime-adaptive weights
+
+The quant score uses regime-adaptive weights from `DEFAULT_PRIORS`. In a bull regime, momentum is weighted higher; in a bear regime, inflow dominates and momentum is penalised. The `weights_used` field in `observed.deluagent.quant` exposes what fired on each call.
+
+| Regime | Momentum | Volume | Inflow | Structure |
+|---|---|---|---|---|
+| `BULL_TREND` | 0.55 | 0.25 | 0.20 | 0.25 (fixed) |
+| `BULL_CHOP` | 0.40 | 0.30 | 0.30 | 0.25 (fixed) |
+| `MIXED` | 0.35 | 0.30 | 0.35 | 0.25 (fixed) |
+| `BEAR_TREND` | 0.20 | 0.30 | 0.50 | 0.25 (fixed) |
+| `BEAR_CAPITULATION` | 0.25 | 0.35 | 0.40 | 0.25 (fixed) |
+| `BASE_DECOUPLED` | 0.45 | 0.30 | 0.25 | 0.25 (fixed) |
+
+Structure weight is always 0.25. The remaining 0.75 is split across momentum/volume/inflow per the table above.
+
 ## Response schema summary
 
 Returns JSON with:
@@ -98,7 +113,7 @@ Returns JSON with:
 - `observed.deluagent`: scout, auditor, quant — always populated server-side
 - `signals`: momentum, flow, structure, volatility, liquidity
 - `context`: regime_label, regime_confidence, base_eco_pulse, macro_pulse
-- `comparables`: pool_age_band, liquidity_tier, turnover_ratio
+- `comparables`: pool_age_band, liquidity_tier, turnover_ratio, atr_pct_1h
 - `mandate`: action, entry_zone `[low, high]`, stop_loss, stop_basis, size_hint_pct, size_basis, horizon, invalidations `string[]`
 
 See [`references/response-schema.md`](./references/response-schema.md) for the full field-by-field schema and [`references/mandate-fields.md`](./references/mandate-fields.md) for mandate construction details.
@@ -158,12 +173,12 @@ This endpoint is x402-protected. Your agent's x402 client receives a `402` with 
     "deluagent": {
       "scout":   { "viabilityScore": 90, "smartMoney": false, "capitalInflowRatio": 0.0699, "buyPressure": 0.4673, "bucket": "tier1", "source": "internal" },
       "auditor": { "verdict": "SAFE", "safetyScore": 100, "hardFail": false, "hardFails": [], "source": "internal" },
-      "quant":   { "quantScore": 46.4, "regime": "MIXED", "structure_phase": "markdown", "atr_pct_1h": 2.32, "source": "internal" }
+      "quant":   { "quantScore": 46.4, "regime": "MIXED", "structure_phase": "markdown", "atr_pct_1h": 2.32, "source": "internal", "weights_used": { "momentum": 0.35, "volume": 0.30, "inflow": 0.35, "structure": 0.25 } }
     }
   },
   "signals": {
     "momentum":   { "direction": "bullish", "strength": "weak", "h1_aligned_with_h24": false },
-    "flow":       { "buyer_pressure": "balanced", "net_flow_h24_pct": -33.4, "txn_intensity": "high", "data_quality": "estimated" },
+    "flow":       { "buyer_pressure": "balanced", "net_flow_h24_pct": -33.4, "txn_intensity": "high", "data_quality": "full" },
     "structure":  { "state": "markdown", "bias": "bearish" },
     "volatility": { "regime": "normal", "atr_pct_1h": 2.32, "atr_pct_band": "p25-p50" },
     "liquidity":  { "depth_tier": "premium", "liquidity_to_volume_ratio": 14.31 }
@@ -177,7 +192,8 @@ This endpoint is x402-protected. Your agent's x402 client receives a `402` with 
   "comparables": {
     "pool_age_band": "veteran (>180d)",
     "liquidity_tier": "premium",
-    "turnover_ratio": 0.0699
+    "turnover_ratio": 0.0699,
+    "atr_pct_1h": 2.32
   },
   "mandate": {
     "action": "WATCH",
@@ -190,7 +206,6 @@ This endpoint is x402-protected. Your agent's x402 client receives a `402` with 
     "invalidations": [
       "close below 0.000513",
       "regime flip away from MIXED",
-      "liquidity drops below $50k",
       "structure confirms markdown continuation"
     ]
   },
