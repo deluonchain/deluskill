@@ -6,9 +6,9 @@ These examples are optional recipes for standalone callers. The API spec lives i
 
 Endpoint used below:
 
-`GET https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/{ca}?chain=base`
+`GET https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/{ca}`
 
-The endpoint costs $0.25 USDC on Base per call and uses x402 with EIP-3009.
+Base is the only supported chain — no chain parameter needed. The endpoint costs $0.25 USDC on Base per call and uses x402 with EIP-3009. The response leads with a flat `decision` block — read that first; the full cognition report sits underneath.
 
 ## TypeScript: viem + x402-fetch
 
@@ -29,7 +29,7 @@ const account = privateKeyToAccount(privateKey as `0x${string}`);
 const fetchWithPayment = wrapFetchWithPayment(fetch, account);
 
 const ca = "0x22af33fe49fd1fa80c7149773dde5890d3c76f3b";
-const url = `https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/${ca}?chain=base`;
+const url = `https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/${ca}`;
 
 const response = await fetchWithPayment(url);
 if (!response.ok) {
@@ -37,8 +37,15 @@ if (!response.ok) {
 }
 
 const report = await response.json();
-console.log(report.verdict, report.score, report.confidence);
-console.log(report.mandate);
+
+// read the decision header first — one hop to the call
+const d = report.decision;
+console.log(d.action, d.conviction, d.read);
+
+// simple agent gate
+if (d.action === "ENTER" && d.conviction >= 70 && report.confidence >= 0.6) {
+  console.log("entry", d.entry_low, d.entry_high, "stop", d.stop, "size%", d.size_pct);
+}
 ```
 
 ## Python: x402 SDK
@@ -62,14 +69,17 @@ if not private_key:
 client = x402_client(wallet=private_key)
 
 ca = "0x22af33fe49fd1fa80c7149773dde5890d3c76f3b"
-url = f"https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/{ca}?chain=base"
+url = f"https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/{ca}"
 
 response = client.get(url)
 response.raise_for_status()
 report = response.json()
 
-print(report["verdict"], report["score"], report["confidence"])
-print(report["mandate"])
+d = report["decision"]
+print(d["action"], d["conviction"], d["read"])
+
+if d["action"] == "ENTER" and d["conviction"] >= 70 and report["confidence"] >= 0.6:
+    print("entry", d["entry_low"], d["entry_high"], "stop", d["stop"], "size%", d["size_pct"])
 ```
 
 ## Raw HTTP: manual x402 payment flow
@@ -85,12 +95,12 @@ High-level flow:
 5. Sign the authorization with the paying wallet.
 6. Encode the x402 payment payload.
 7. Retry the original request with `X-PAYMENT: <encoded-payment-payload>`.
-8. Read the JSON response and the `X-PAYMENT-RESPONSE` settlement receipt.
+8. Read the JSON response (start with the `decision` block) and the `X-PAYMENT-RESPONSE` settlement receipt.
 
 ```bash
 # 1. Discover payment requirements.
 curl -i \
-  "https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/0x22af33fe49fd1fa80c7149773dde5890d3c76f3b?chain=base"
+  "https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/0x22af33fe49fd1fa80c7149773dde5890d3c76f3b"
 
 # 2. Your custom client signs the EIP-3009 authorization and encodes the x402 payload.
 PAYMENT="<encoded-x402-payment-payload>"
@@ -98,7 +108,9 @@ PAYMENT="<encoded-x402-payment-payload>"
 # 3. Retry with payment.
 curl -i \
   -H "X-PAYMENT: ${PAYMENT}" \
-  "https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/0x22af33fe49fd1fa80c7149773dde5890d3c76f3b?chain=base"
+  "https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/0x22af33fe49fd1fa80c7149773dde5890d3c76f3b"
 ```
+
+Pass `?verbose=true` for the raw `observed` block (market/regime/social + scout/auditor/quant mirror). Pass `?social=true` for checkr social enrichment (+$0.45).
 
 Do not put standalone wallet-loading snippets in `SKILL.md`. Keep them here so agent runtimes can consume the skill as a pure API spec while standalone developers still have reference material.
