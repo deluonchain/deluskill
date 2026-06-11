@@ -2,27 +2,43 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/deluonchain/deluskill/blob/main/references/oracle-response.schema.json",
   "title": "DeluOracleResponse",
-  "description": "v2-full-cognition response shape returned by the delu-oracle x402 endpoint.",
+  "description": "v23-decision-first response shape returned by the delu-oracle x402 endpoint. Leads with a flat decision header; comparables removed; observed + deluagent mirror gated behind ?verbose=true.",
   "type": "object",
   "additionalProperties": false,
   "required": [
+    "decision",
     "ca",
     "chain",
     "score",
     "verdict",
     "confidence",
-    "summary",
     "drivers",
     "risks",
-    "observed",
     "signals",
     "context",
-    "comparables",
     "mandate",
+    "selected_timeframe",
+    "pool_source",
+    "candle_count",
     "timestamp",
     "oracle_version"
   ],
   "properties": {
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "conviction", "direction", "entry_low", "entry_high", "stop", "size_pct", "read"],
+      "properties": {
+        "action": { "enum": ["ENTER", "WATCH", "AVOID"] },
+        "conviction": { "type": "number", "minimum": 0, "maximum": 100 },
+        "direction": { "const": "long" },
+        "entry_low": { "type": ["number", "null"] },
+        "entry_high": { "type": ["number", "null"] },
+        "stop": { "type": ["number", "null"] },
+        "size_pct": { "type": ["number", "null"] },
+        "read": { "type": "string" }
+      }
+    },
     "ca": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
     "chain": { "const": "base" },
     "score": { "type": "number", "minimum": 0, "maximum": 100 },
@@ -31,55 +47,8 @@
       "enum": ["strong_buy", "buy", "hold", "avoid", "drop"]
     },
     "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-    "summary": { "type": "string" },
-    "drivers": { "type": "array", "items": { "type": "string" } },
-    "risks": { "type": "array", "items": { "type": "string" } },
-    "observed": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["market", "regime", "social"],
-      "properties": {
-        "market": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "liquidity_usd",
-            "volume_h1",
-            "volume_h24",
-            "price_change_h1",
-            "price_change_h24",
-            "atr_pct_1h",
-            "pool_age_days"
-          ],
-          "properties": {
-            "liquidity_usd": { "type": "number" },
-            "volume_h1": { "type": "number" },
-            "volume_h24": { "type": "number" },
-            "price_change_h1": { "type": "number" },
-            "price_change_h24": { "type": "number" },
-            "atr_pct_1h": { "type": ["number", "null"] },
-            "pool_age_days": { "type": ["number", "null"] }
-          }
-        },
-        "regime": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["label", "confidence"],
-          "properties": {
-            "label": { "type": "string" },
-            "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
-          }
-        },
-        "social": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["status"],
-          "properties": {
-            "status": { "const": "not_returned_raw" }
-          }
-        }
-      }
-    },
+    "drivers": { "type": "array", "items": { "type": "string" }, "maxItems": 3 },
+    "risks": { "type": "array", "items": { "type": "string" }, "maxItems": 3 },
     "signals": {
       "type": "object",
       "additionalProperties": false,
@@ -98,10 +67,10 @@
         "flow": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["buyer_pressure", "net_flow_h24_pct", "txn_intensity", "data_quality"],
+          "required": ["buyer_pressure", "net_flow_h1_pct", "txn_intensity", "data_quality"],
           "properties": {
             "buyer_pressure": { "enum": ["dominant", "balanced", "weak", "unknown"] },
-            "net_flow_h24_pct": { "type": "number" },
+            "net_flow_h1_pct": { "type": "number" },
             "txn_intensity": { "enum": ["high", "normal", "low"] },
             "data_quality": { "enum": ["full", "estimated"] }
           }
@@ -139,23 +108,12 @@
     "context": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["base_eco_pulse", "macro_pulse", "pool_age_tier"],
+      "required": ["regime_label", "regime_confidence", "base_eco_pulse", "macro_pulse"],
       "properties": {
+        "regime_label": { "type": "string" },
+        "regime_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "base_eco_pulse": { "enum": ["expanding", "contracting", "flat"] },
-        "macro_pulse": { "enum": ["supportive", "neutral", "headwind"] },
-        "pool_age_tier": { "enum": ["fresh", "young", "mature", "veteran"] }
-      }
-    },
-    "comparables": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["symbol", "relation"],
-        "properties": {
-          "symbol": { "type": "string" },
-          "relation": { "type": "string" }
-        }
+        "macro_pulse": { "enum": ["supportive", "neutral", "headwind"] }
       }
     },
     "mandate": {
@@ -169,28 +127,37 @@
         "size_hint_pct",
         "size_basis",
         "horizon",
-        "invalidation"
+        "invalidations"
       ],
       "properties": {
-        "action": { "enum": ["enter", "watch", "avoid"] },
+        "action": { "enum": ["ENTER", "WATCH", "AVOID"] },
         "entry_zone": {
-          "type": ["object", "null"],
-          "additionalProperties": false,
-          "required": ["low", "high"],
-          "properties": {
-            "low": { "type": "number" },
-            "high": { "type": "number" }
-          }
+          "type": ["array", "null"],
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
         },
         "stop_loss": { "type": ["number", "null"] },
-        "stop_basis": { "type": "string" },
-        "size_hint_pct": { "type": "number", "minimum": 0, "maximum": 100 },
-        "size_basis": { "type": "string" },
+        "stop_basis": { "type": ["string", "null"] },
+        "size_hint_pct": { "type": ["number", "null"] },
+        "size_basis": { "type": ["string", "null"] },
         "horizon": { "type": "string" },
-        "invalidation": { "type": "string" }
+        "invalidations": { "type": "array", "items": { "type": "string" } }
       }
     },
+    "selected_timeframe": { "type": ["string", "null"], "enum": ["1h", "15m", "5m", null] },
+    "pool_source": { "enum": ["primary", "gecko_alt_pool"] },
+    "candle_count": { "type": "number", "minimum": 0 },
     "timestamp": { "type": "string", "format": "date-time" },
-    "oracle_version": { "const": "v2-full-cognition" }
+    "oracle_version": { "const": "v23-decision-first" },
+    "observed": {
+      "type": "object",
+      "description": "Only present when ?verbose=true. Raw market block + deluagent scout/auditor/quant mirror.",
+      "additionalProperties": true
+    },
+    "summary": {
+      "type": "string",
+      "description": "Only present when ?verbose=true. Pre-lint narrative; source of decision.read."
+    }
   }
 }
