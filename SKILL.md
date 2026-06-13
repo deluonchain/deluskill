@@ -1,7 +1,7 @@
 ---
 name: delu-oracle
-version: 9
-description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Returns a flat decision header (action, conviction, entry, stop, size, one-line read) plus verdict, 0–100 score, signal breakdown, market context, and a tactician mandate. Single CA, GET, $0.25.
+version: 10
+description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Returns a flat decision header (action, conviction, entry, stop, size, one-line read) plus verdict, 0–100 score, signal breakdown, market context, and a tactician mandate. Single CA, GET, 100,000 DELU.
 ---
 
 # delu-oracle
@@ -10,7 +10,7 @@ Delu Oracle is the intelligence layer for any Base trading agent. Pass one Base 
 
 Scout, auditor, and quant are computed server-side on every call — no enrichment POST body required. Social signal (checkr) is opt-in via `?social=true`.
 
-> **v23-decision-first.** The response now leads with a flat `decision` block. `comparables` is removed — one CA in, that one token analysed, no cross-token noise. The raw `observed` block and the scout/auditor/quant mirror are gated behind `?verbose=true` to keep the default payload lean. Pool selection is volume-weighted and the OHLCV read uses a 1h→15m→5m ladder so fresh pools still return a real mandate. Single CA, GET, $0.25 — unchanged.
+> **v23-decision-first.** The response now leads with a flat `decision` block. `comparables` is removed — one CA in, that one token analysed, no cross-token noise. The raw `observed` block and the scout/auditor/quant mirror are gated behind `?verbose=true` to keep the default payload lean. Pool selection is volume-weighted and the OHLCV read uses a 1h→15m→5m ladder so fresh pools still return a real mandate. Single CA, GET, 100,000 DELU.
 
 ## Endpoint
 
@@ -25,7 +25,7 @@ Base is the only supported chain — no chain parameter needed.
 | Parameter | Location | Required | Notes |
 |---|---|---|---|
 | `ca` | path | yes | 0x-prefixed EVM contract address (40 hex chars) |
-| `social` | query | no | Pass `?social=true` to enable checkr social enrichment (+$0.45, billed to caller) |
+| `social` | query | no | Pass `?social=true` to enable checkr social enrichment (+$0.45 USDC, billed to caller) |
 | `verbose` | query | no | Pass `?verbose=true` to include the raw `observed` block + scout/auditor/quant mirror + pre-lint `summary`. Off by default. |
 
 ## The decision header — read this first
@@ -167,11 +167,13 @@ See [`references/response-schema.md`](./references/response-schema.md) for the f
 
 ## Pricing
 
-$0.25 USDC on Base per call (x402, EIP-3009). Social enrichment adds $0.45 (checkr API cost, billed to caller).
+**100,000 DELU per call** — paid in the DELU token (`0x7b0ee9dcb5c1d4d7cd630c652959951936512ba3`) on Base via x402 ERC-20 token payment. Callers need a DELU balance on Base. Social enrichment adds $0.45 USDC (checkr API cost, billed separately to caller).
 
 ## Payment
 
-This endpoint is x402-protected. Your agent's x402 client receives a `402` with payment requirements, signs an EIP-3009 `transferWithAuthorization` for 0.25 USDC on Base, retries with `X-PAYMENT`, and receives the response plus an `X-PAYMENT-RESPONSE` settlement receipt. Every x402 client (Bankr, Claude + x402 MCP, x402-fetch, x402 Python SDK) implements this handshake automatically.
+This endpoint is x402-protected with ERC-20 token payment. Your agent's x402 client receives a `402` with payment requirements specifying 100,000 DELU on Base, signs the appropriate authorization, retries with `X-PAYMENT`, and receives the response plus an `X-PAYMENT-RESPONSE` settlement receipt. Any x402 client that supports ERC-20 token payments (Bankr, Claude + x402 MCP, x402-fetch, x402 Python SDK) implements this handshake automatically.
+
+**Payment token:** DELU — `0x7b0ee9dcb5c1d4d7cd630c652959951936512ba3` on Base (18 decimals).
 
 ## Example response (default, no verbose)
 
