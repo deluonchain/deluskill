@@ -28,8 +28,9 @@ GET https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracl
 ```
 
 - **Chain:** Base only
-- **Price:** $0.25 USDC per call (x402, EIP-3009)
-- **Social enrichment:** pass `?social=true` to add checkr sentiment (+$0.45, billed to caller)
+- **Price:** 100,000 DELU per call (x402, ERC-20 token payment on Base)
+- **Token:** `0x7b0ee9dcb5c1d4d7cd630c652959951936512ba3` (DELU on Base)
+- **Social enrichment:** pass `?social=true` to add checkr sentiment (+$0.45 USDC, billed to caller)
 - **Verbose:** pass `?verbose=true` for the raw `observed` block + scout/auditor/quant mirror (off by default)
 
 ## Docs
@@ -43,4 +44,4 @@ GET https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracl
 
 ## Payment
 
-x402-protected. Any x402 client (Bankr, Claude + x402 MCP, `x402-fetch`, x402 Python SDK) handles the payment handshake automatically — no manual signing required.
+x402-protected. Payment is 100,000 DELU (`0x7b0ee9dcb5c1d4d7cd630c652959951936512ba3`) on Base per call. Any x402 client that supports ERC-20 token payments (Bankr, Claude + x402 MCP, `x402-fetch`, x402 Python SDK) handles the payment handshake automatically — no manual signing required. Callers need a DELU balance on Base.
