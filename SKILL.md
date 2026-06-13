@@ -1,7 +1,7 @@
 ---
 name: delu-oracle
-version: 11
-description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Tiered pricing (100M+ free, 50M+ 50k DELU, Public 500k DELU). Returns a flat decision header plus verdict, score, signals, and mandate. Single CA, GET, upto scheme.
+version: 12
+description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Tiered pricing (100M+ free, 50M+ 50k DELU, Public 250k DELU). Returns a flat decision header plus verdict, score, signals, and mandate. Single CA, GET, upto scheme.
 ---
 
 # delu-oracle
@@ -10,7 +10,7 @@ Delu Oracle is the intelligence layer for any Base trading agent. Pass one Base 
 
 Scout, auditor, and quant are computed server-side on every call — no enrichment POST body required. Social signal (checkr) is opt-in via `?social=true`.
 
-> **v27-tiered-flywheel.** The endpoint now uses the `upto` scheme with real-time balance-based discounting. Agents sign for the 500k DELU maximum, but the handler settles for 50k (holders) or 0 (whales) based on their $DELU balance on Base.
+> **v28-tiered-flywheel.** The endpoint now uses the `upto` scheme with real-time balance-based discounting. Agents sign for the 250k DELU maximum, but the handler settles for 50k (holders) or 0 (whales) based on their $DELU balance on Base.
 
 ## Endpoint
 
@@ -167,19 +167,19 @@ See [`references/response-schema.md`](./references/response-schema.md) for the f
 
 ## Pricing (Hold-to-Discount Flywheel)
 
-The endpoint uses the `upto` scheme with real-time balance-based discounting. Agents sign for the 500,000 DELU maximum, but the handler settles for a lower amount based on the caller's $DELU balance on Base.
+The endpoint uses the `upto` scheme with real-time balance-based discounting. Agents sign for the 250,000 DELU maximum, but the handler settles for a lower amount based on the caller's $DELU balance on Base.
 
 | Tier | Holding | Cost per call |
 |---|---|---|
 | **Whale** | 100M+ DELU | **0 DELU (Free)** |
 | **Holder** | 50M+ DELU | **50,000 DELU** |
-| **Public** | < 50M DELU | **500,000 DELU** |
+| **Public** | < 50M DELU | **250,000 DELU** |
 
 **Payment token:** DELU — `0x7b0ee9dcb5c1d4d7cd630c652959951936512ba3` on Base (18 decimals).
 
 ## Payment
 
-This endpoint is x402-protected with ERC-20 token payment. Your agent's x402 client receives a `402` with payment requirements specifying 500,000 DELU on Base, signs the appropriate authorization, retries with `X-PAYMENT`, and receives the response plus an `X-PAYMENT-RESPONSE` settlement receipt. Any x402 client that supports ERC-20 token payments (Bankr, Claude + x402 MCP, x402-fetch, x402 Python SDK) implements this handshake automatically.
+This endpoint is x402-protected with ERC-20 token payment. Your agent's x402 client receives a `402` with payment requirements specifying 250,000 DELU on Base, signs the appropriate authorization, retries with `X-PAYMENT`, and receives the response plus an `X-PAYMENT-RESPONSE` settlement receipt. Any x402 client that supports ERC-20 token payments (Bankr, Claude + x402 MCP, x402-fetch, x402 Python SDK) implements this handshake automatically.
 
 ## Example response (default, no verbose)
 
@@ -238,7 +238,7 @@ This endpoint is x402-protected with ERC-20 token payment. Your agent's x402 cli
   "pool_source": "primary",
   "candle_count": 168,
   "timestamp": "2026-06-09T00:00:00.000Z",
-  "oracle_version": "v27-tiered-flywheel"
+  "oracle_version": "v28-tiered-flywheel"
 }
 ```
 
