@@ -4,6 +4,8 @@ Locked JSON shape returned by `GET /analyze/{ca}?chain=base`. Fields are stable 
 
 > **v29 change:** `observed` (market/regime/social + scout/auditor/quant mirror) is now always included in the default response. No `?verbose=true` required. `?verbose=true` is accepted but is a no-op — it returns the same payload. `summary` (pre-lint narrative) is also always present.
 
+> **Sequential calls required:** The x402 `upto` scheme uses a single-use Permit2 signature per authorization. Parallel requests from the same payer wallet will result in `402 Payment could not be verified` on all but the first. Always await each response before issuing the next call.
+
 ## `decision` (read this first)
 
 The flat decision header. Everything an executor needs, no traversal.
@@ -35,6 +37,7 @@ A simple agent gate: `decision.action === "ENTER" && decision.conviction >= 70 &
 | `signals` | object | Per-dimension breakdown — see below. |
 | `context` | object | Regime + macro + base-eco pulse. |
 | `mandate` | object | Tactician trade plan — see `mandate-fields.md`. |
+| `payment_tier` | object | Actual settlement info — see below. Source of truth for what was charged. |
 | `observed` | object | Always present. Raw market block + deluagent scout/auditor/quant mirror — see below. |
 | `summary` | string | Pre-lint narrative; source of `decision.read` before voice guardrails. |
 | `drivers` | string[] | Up to 3 bullet-form positives. |
@@ -73,17 +76,40 @@ Detected chart structure from the selected-timeframe OHLCV ladder: `state` (`acc
 | `base_eco_pulse` | enum | `expanding`, `contracting`, or `flat`. Pulse of base-eco anchors (BNKR, AERO, VIRTUAL, VVV, LFI). |
 | `macro_pulse` | enum | `supportive`, `neutral`, or `headwind`. cbBTC/WETH macro anchors. |
 
+## `payment_tier`
+
+The actual settlement applied to this request. Always present in the response body.
+
+> **Note:** The `amountUsd` field in the x402 client wrapper (e.g. `paymentMade.amountUsd`) reflects the **authorization ceiling** — 250,000 DELU at market price — not the settled amount. `payment_tier` is the source of truth for what was actually charged.
+
+| Field | Type | Description |
+|---|---|---|
+| `tier` | enum | `"whale"` (100M+ DELU, free), `"holder"` (50M+ DELU, 50k settled), `"public"` (< 50M DELU, 250k settled). |
+| `delu_balance` | number | Caller's DELU balance on Base at request time. |
+| `settled_delu` | number | Actual DELU settled: `0` (whale), `50000` (holder), `250000` (public). |
+| `note` | string | Human-readable tier description. |
+
+Example:
+```json
+"payment_tier": {
+  "tier": "holder",
+  "delu_balance": 50000000,
+  "settled_delu": 50000,
+  "note": "50M+ DELU holder rate applied"
+}
+```
+
 ## `observed` (always present)
 
 Always included in the default response — no `?verbose=true` needed.
 
 ### `observed.market`
 
-Raw price, liquidity, volume, ATR, pool age, dex. Fields: `price_usd`, `liquidity_usd`, `volume_h24`, `volume_h6`, `volume_h1`, `atr_pct`, `pool_age_h`, `dex`, `pair_address`.
+Raw market data from dexscreener + gecko. Fields: `symbol`, `price_usd`, `liquidity_usd`, `volume_h24`, `volume_h6`, `volume_h1`, `price_change_h1`, `price_change_h6`, `price_change_h24`, `atr_pct_1h`, `pool_age_days`, `dex_id`, `raw_ohlcv_used`.
 
 ### `observed.regime`
 
-Regime classification inputs: `btc_change_24h`, `eth_change_24h`, `base_eco_change_24h`, `macro_score`, `base_eco_score`, `regime_label`, `regime_confidence`.
+Regime classification: `label`, `confidence`.
 
 ### `observed.social`
 
@@ -91,17 +117,34 @@ Social signal block. `{ "status": "unavailable" }` when `?social=true` is not pa
 
 ### `observed.deluagent`
 
-Scout/auditor/quant mirror — matches what a full deluagent-cycle would produce on the same token.
+Scout/auditor/quant mirror — computed server-side on every call with `source: "internal"`. Matches what a full deluagent-cycle would produce on the same token.
 
-| Sub-field | Description |
-|---|---|
-| `scout` | `viabilityScore`, `smartMoney`, `capitalInflowRatio`, `buyPressure`, `bucket` |
-| `auditor` | `verdict`, `safetyScore`, `hardFail` |
-| `quant` | `finalQuantScore`, `weights_used` (regime-adaptive weight breakdown) |
+**`scout`:** `symbol`, `address`, `priceUsd`, `liquidity`, `volume24h`, `viabilityScore`, `smartMoney`, `capitalInflowRatio`, `buyPressure`, `bucket` (`tier1`/`tier2`/`tier3`), `poolAgeDays`, `source`
+
+**`auditor`:** `verdict` (`PASS`/`CAUTION`/`FAIL`), `safetyScore`, `hardFail` (bool), `hardFails` (array of flags e.g. `["pool_too_new"]`, `["low_liquidity"]`), `source`
+
+**`quant`:** `quantScore`, `regime`, `structure_phase`, `atr_pct_1h`, `volatility_regime`, `weights_used` (regime-adaptive weight breakdown), `source`
 
 ## `?verbose=true`
 
 Accepted but no-op in v29 — returns the same payload as the default response. `observed` and `summary` are always present.
+
+## Sequential call requirement
+
+The x402 `upto` payment scheme generates a single Permit2 signature per authorization. Each signature is single-use and tied to a specific nonce. **Parallel requests from the same payer wallet will result in `402 Payment could not be verified` on all but the first request.**
+
+Always call sequentially — one CA at a time, await the response, then call the next:
+
+```js
+// correct
+for (const ca of watchlist) {
+  const result = await oracle.analyze(ca);
+  process(result);
+}
+
+// wrong — all but one will 402
+const results = await Promise.all(watchlist.map(ca => oracle.analyze(ca)));
+```
 
 ## Pool selection & OHLCV ladder (v29)
 
