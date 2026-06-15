@@ -1,8 +1,8 @@
 # delu-oracle — Response Schema
 
-Locked JSON shape returned by `GET /analyze/{ca}?chain=base`. Fields are stable across the `v23-decision-first` version. Any breaking change bumps the `oracle_version` string.
+Locked JSON shape returned by `GET /analyze/{ca}?chain=base`. Fields are stable across the `v29-tiered-flywheel` version. Any breaking change bumps the `oracle_version` string.
 
-> **v23 change:** the response now leads with a flat `decision` block so a consuming agent can read the call in one hop. `comparables` is removed (single-CA focus). The scout/auditor/quant mirror and the raw `observed` block are now behind `?verbose=true`. One CA per call, `GET`, $0.25 — unchanged.
+> **v29 change:** `observed` (market/regime/social + scout/auditor/quant mirror) is now always included in the default response. No `?verbose=true` required. `?verbose=true` is accepted but is a no-op — it returns the same payload. `summary` (pre-lint narrative) is also always present.
 
 ## `decision` (read this first)
 
@@ -26,7 +26,7 @@ A simple agent gate: `decision.action === "ENTER" && decision.conviction >= 70 &
 | Field | Type | Description |
 |---|---|---|
 | `decision` | object | Flat decision header — see above. |
-| `oracle_version` | string | `"v23-decision-first"` for this API. |
+| `oracle_version` | string | `"v29-tiered-flywheel"` for this API. |
 | `ca` | string | The 0x-prefixed EVM contract address echoed back. |
 | `chain` | string | Always `"base"`. |
 | `verdict` | enum | One of `strong_buy`, `buy`, `hold`, `avoid`, `drop`. |
@@ -35,6 +35,8 @@ A simple agent gate: `decision.action === "ENTER" && decision.conviction >= 70 &
 | `signals` | object | Per-dimension breakdown — see below. |
 | `context` | object | Regime + macro + base-eco pulse. |
 | `mandate` | object | Tactician trade plan — see `mandate-fields.md`. |
+| `observed` | object | Always present. Raw market block + deluagent scout/auditor/quant mirror — see below. |
+| `summary` | string | Pre-lint narrative; source of `decision.read` before voice guardrails. |
 | `drivers` | string[] | Up to 3 bullet-form positives. |
 | `risks` | string[] | Up to 3 bullet-form risks. |
 | `selected_timeframe` | enum \| null | OHLCV timeframe the read was built on: `1h`, `15m`, `5m`, or `null` if no usable candles. |
@@ -71,18 +73,40 @@ Detected chart structure from the selected-timeframe OHLCV ladder: `state` (`acc
 | `base_eco_pulse` | enum | `expanding`, `contracting`, or `flat`. Pulse of base-eco anchors (BNKR, AERO, VIRTUAL, VVV, LFI). |
 | `macro_pulse` | enum | `supportive`, `neutral`, or `headwind`. cbBTC/WETH macro anchors. |
 
-## `?verbose=true` (debug only)
+## `observed` (always present)
 
-When `verbose=true` is passed, two extra keys are added:
+Always included in the default response — no `?verbose=true` needed.
 
-- `observed` — raw market block (`market`, `regime`, `social`) plus the `deluagent` mirror (`scout`, `auditor`, `quant`).
-- `summary` — the pre-lint narrative (the source of `decision.read` before voice guardrails).
+### `observed.market`
 
-These are omitted by default to keep the payload lean (~50-60% smaller). Do not depend on them in production clients.
+Raw price, liquidity, volume, ATR, pool age, dex. Fields: `price_usd`, `liquidity_usd`, `volume_h24`, `volume_h6`, `volume_h1`, `atr_pct`, `pool_age_h`, `dex`, `pair_address`.
 
-## Pool selection & OHLCV ladder (v23)
+### `observed.regime`
+
+Regime classification inputs: `btc_change_24h`, `eth_change_24h`, `base_eco_change_24h`, `macro_score`, `base_eco_score`, `regime_label`, `regime_confidence`.
+
+### `observed.social`
+
+Social signal block. `{ "status": "unavailable" }` when `?social=true` is not passed. When `?social=true` is passed, contains `sentiment_score`, `momentum`, `mention_velocity`, `influencer_hits`.
+
+### `observed.deluagent`
+
+Scout/auditor/quant mirror — matches what a full deluagent-cycle would produce on the same token.
+
+| Sub-field | Description |
+|---|---|
+| `scout` | `viabilityScore`, `smartMoney`, `capitalInflowRatio`, `buyPressure`, `bucket` |
+| `auditor` | `verdict`, `safetyScore`, `hardFail` |
+| `quant` | `finalQuantScore`, `weights_used` (regime-adaptive weight breakdown) |
+
+## `?verbose=true`
+
+Accepted but no-op in v29 — returns the same payload as the default response. `observed` and `summary` are always present.
+
+## Pool selection & OHLCV ladder (v29)
 
 - **Canonical pool** is chosen by `liquidity × (0.25 + min(volume_h24 / liquidity, 5))` — the pool actually trading, not the fattest dead pool. Pancakeswap pairs are excluded.
-- **OHLCV ladder**: tries `1h` (needs ≥14 candles + finite ATR), falls back to `15m`, then `5m`. If the primary pool yields no usable ladder, the oracle re-resolves the canonical pool and retries (`pool_source: "gecko_alt_pool"`). Fresh pools (<~15h) now return a real mandate instead of nulls.
+- **OHLCV ladder**: tries `1h` (needs ≥14 candles + finite ATR), falls back to `15m`, then `5m`. If the primary pool yields no usable ladder, the oracle re-resolves via gecko pro `/tokens/{ca}/pools` as a true independent fallback (`pool_source: "gecko_alt_pool"`). Fresh pools (<~15h) now return a real mandate instead of nulls.
+- **dexscreener 5xx retry**: the pool resolver retries on 5xx (up to 2x, 500ms backoff) before falling back to gecko pro — eliminates transient dexscreener gaps on known tokens.
 
 For mandate fields (`entry_zone`, `stop_loss`, `size_hint_pct`, `horizon`, `invalidations`) see `mandate-fields.md`.
