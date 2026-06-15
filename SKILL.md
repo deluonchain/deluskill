@@ -1,6 +1,6 @@
 ---
 name: delu-oracle
-version: 13
+version: 14
 description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Tiered pricing (100M+ free, 50M+ 50k DELU, Public 250k DELU). Returns a flat decision header plus verdict, score, signals, mandate, and full observed block (scout/auditor/quant mirror) in every response. Single CA, GET, upto scheme.
 ---
 
@@ -27,6 +27,25 @@ Base is the only supported chain — no chain parameter needed.
 | `ca` | path | yes | 0x-prefixed EVM contract address (40 hex chars) |
 | `social` | query | no | Pass `?social=true` to enable checkr social enrichment (+$0.45 USDC, billed to caller) |
 | `verbose` | query | no | Accepted but no-op in v29 — `observed` and `summary` are always present in the default response. |
+
+## ⚠️ Sequential calls required
+
+**Do not call this endpoint in parallel.** The x402 `upto` payment scheme generates a single Permit2 signature per authorization. Each signature is single-use and tied to a specific nonce. If you fire multiple requests simultaneously with the same payer wallet, the gateway accepts the first and rejects all others with `402 Payment could not be verified`.
+
+**Always call sequentially — one CA at a time, await the full response, then call the next.**
+
+```js
+// ✅ correct — sequential
+for (const ca of watchlist) {
+  const result = await oracle.analyze(ca);  // await each before next
+  process(result);
+}
+
+// ❌ wrong — parallel
+const results = await Promise.all(watchlist.map(ca => oracle.analyze(ca)));
+```
+
+This applies to any x402 client (Bankr, x402-fetch, x402 Python SDK, Claude MCP). The Permit2 nonce is consumed on the first authorized request; all concurrent siblings fail.
 
 ## The decision header — read this first
 
@@ -136,6 +155,25 @@ When `verdict` is `hold`, `decision.action` and `mandate.action` are `WATCH`. No
 
 Only `horizon` and `invalidations` are populated for WATCH — conditions to monitor, not a trade to execute.
 
+## Payment tier — what you actually paid
+
+The response includes a `payment_tier` block so callers know exactly which tier was applied and what was settled. The `amountUsd` field in the x402 client wrapper reflects the **authorization ceiling** (250k DELU at market price) — not the settled amount. `payment_tier` is the source of truth.
+
+```json
+"payment_tier": {
+  "tier": "holder",           // "whale" | "holder" | "public"
+  "delu_balance": 50000000,   // caller's DELU balance on Base at request time
+  "settled_delu": 50000,      // actual DELU settled (0 for whale, 50k for holder, 250k for public)
+  "note": "50M+ DELU holder rate applied"
+}
+```
+
+| Tier | Balance | Settled |
+|---|---|---|
+| `whale` | 100M+ DELU | 0 DELU (free) |
+| `holder` | 50M+ DELU | 50,000 DELU |
+| `public` | < 50M DELU | 250,000 DELU |
+
 ## Response schema summary
 
 Returns JSON with:
@@ -150,6 +188,7 @@ Returns JSON with:
 - `signals.flow.net_flow_h1_pct`: h1-derived net flow percentage (buyer pressure ratio from h1 txn data)
 - `context`: regime_label, regime_confidence, base_eco_pulse, macro_pulse
 - `mandate`: action, entry_zone, stop_loss, stop_basis, size_hint_pct, size_basis, horizon, invalidations
+- `payment_tier`: tier, delu_balance, settled_delu, note — actual settlement info (not the x402 authorization ceiling)
 - `observed`: always present — `market` (price, liquidity, volume, ATR, pool age, dex), `regime`, `social`, `deluagent` (scout/auditor/quant mirror with `weights_used`)
 - `summary`: pre-lint narrative; source of `decision.read`
 - `selected_timeframe`, `candle_count`, `pool_source`: data provenance
@@ -162,7 +201,7 @@ See [`references/response-schema.md`](./references/response-schema.md) for the f
 | Status | Meaning |
 |---|---|
 | `400` | Bad `ca` value, malformed address, or no supported Base pair found |
-| `402` | Payment required, missing payment, invalid payment, or failed settlement |
+| `402` | Payment required, missing payment, invalid payment, or failed settlement. **If you see `402 Payment could not be verified` on a retry loop, you are likely calling in parallel — switch to sequential.** |
 | `404` | Unknown token or no reportable token data found |
 | `5xx` | Oracle or upstream service failure — retry later |
 
@@ -181,6 +220,8 @@ The endpoint uses the `upto` scheme with real-time balance-based discounting. Ag
 ## Payment
 
 This endpoint is x402-protected with ERC-20 token payment. Your agent's x402 client receives a `402` with payment requirements specifying 250,000 DELU on Base, signs the appropriate authorization, retries with `X-PAYMENT`, and receives the response plus an `X-PAYMENT-RESPONSE` settlement receipt. Any x402 client that supports ERC-20 token payments (Bankr, Claude + x402 MCP, x402-fetch, x402 Python SDK) implements this handshake automatically.
+
+> **Note:** The `amountUsd` field in the x402 client wrapper reflects the authorization ceiling (250k DELU at market price), not the actual settled amount. Check `payment_tier.settled_delu` in the response body for what was actually charged.
 
 ## Example response (default)
 
@@ -235,34 +276,63 @@ This endpoint is x402-protected with ERC-20 token payment. Your agent's x402 cli
       "structure confirms markdown continuation"
     ]
   },
+  "payment_tier": {
+    "tier": "holder",
+    "delu_balance": 50000000,
+    "settled_delu": 50000,
+    "note": "50M+ DELU holder rate applied"
+  },
   "observed": {
     "market": {
+      "symbol": "BNKR",
       "price_usd": 0.000412,
       "liquidity_usd": 2330000,
       "volume_h24": 163000,
       "volume_h6": 41200,
       "volume_h1": 8900,
-      "atr_pct": 2.32,
-      "pool_age_h": 312,
-      "dex": "uniswap_v3",
-      "pair_address": "0xabc...def"
+      "price_change_h1": 1.2,
+      "price_change_h6": -0.8,
+      "price_change_h24": -3.1,
+      "atr_pct_1h": 2.32,
+      "pool_age_days": 13,
+      "dex_id": "uniswap_v3",
+      "raw_ohlcv_used": true
     },
     "regime": {
-      "btc_change_24h": -1.2,
-      "eth_change_24h": -0.8,
-      "base_eco_change_24h": -0.3,
-      "macro_score": 0.48,
-      "base_eco_score": 0.51,
-      "regime_label": "MIXED",
-      "regime_confidence": 0.11
+      "label": "MIXED",
+      "confidence": 0.11
     },
     "social": { "status": "unavailable" },
     "deluagent": {
-      "scout": { "viabilityScore": 62, "smartMoney": false, "capitalInflowRatio": 0.04, "buyPressure": 0.44, "bucket": "tier2" },
-      "auditor": { "verdict": "SAFE", "safetyScore": 78, "hardFail": false },
+      "scout": {
+        "symbol": "BNKR",
+        "address": "0x22af33fe49fd1fa80c7149773dde5890d3c76f3b",
+        "priceUsd": 0.000412,
+        "liquidity": 2330000,
+        "volume24h": 163000,
+        "viabilityScore": 62,
+        "smartMoney": false,
+        "capitalInflowRatio": 0.04,
+        "buyPressure": 0.44,
+        "bucket": "tier2",
+        "poolAgeDays": 13,
+        "source": "internal"
+      },
+      "auditor": {
+        "verdict": "PASS",
+        "safetyScore": 78,
+        "hardFail": false,
+        "hardFails": [],
+        "source": "internal"
+      },
       "quant": {
-        "finalQuantScore": 0.41,
-        "weights_used": { "momentum": 0.35, "volume": 0.30, "inflow": 0.35, "structure": 0.25 }
+        "quantScore": 46,
+        "regime": "MIXED",
+        "structure_phase": "markdown",
+        "atr_pct_1h": 2.32,
+        "volatility_regime": "normal",
+        "weights_used": { "momentum": 0.35, "volume": 0.30, "inflow": 0.35, "structure": 0.25 },
+        "source": "internal"
       }
     }
   },
