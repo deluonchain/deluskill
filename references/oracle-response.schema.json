@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/deluonchain/deluskill/blob/main/references/oracle-response.schema.json",
   "title": "DeluOracleResponse",
-  "description": "v23-decision-first response shape returned by the delu-oracle x402 endpoint. Leads with a flat decision header; comparables removed; observed + deluagent mirror gated behind ?verbose=true.",
+  "description": "v29-tiered-flywheel response shape returned by the delu-oracle x402 endpoint. Leads with a flat decision header; observed block (market/regime/social + scout/auditor/quant mirror) is always included in the default response — no ?verbose=true required.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,6 +17,7 @@
     "signals",
     "context",
     "mandate",
+    "observed",
     "selected_timeframe",
     "pool_source",
     "candle_count",
@@ -110,7 +111,10 @@
       "additionalProperties": false,
       "required": ["regime_label", "regime_confidence", "base_eco_pulse", "macro_pulse"],
       "properties": {
-        "regime_label": { "type": "string" },
+        "regime_label": {
+          "type": "string",
+          "enum": ["BASE_DECOUPLED", "BULL_TREND", "BULL_CHOP", "MIXED", "BEAR_TREND", "BEAR_CAPITULATION", "DEAD"]
+        },
         "regime_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "base_eco_pulse": { "enum": ["expanding", "contracting", "flat"] },
         "macro_pulse": { "enum": ["supportive", "neutral", "headwind"] }
@@ -145,19 +149,46 @@
         "invalidations": { "type": "array", "items": { "type": "string" } }
       }
     },
+    "observed": {
+      "type": "object",
+      "description": "Always present in the default response. No ?verbose=true required. Raw market block + deluagent scout/auditor/quant mirror + regime + social.",
+      "additionalProperties": true,
+      "properties": {
+        "market": {
+          "type": "object",
+          "description": "Raw price, liquidity, volume, ATR, pool age, dex.",
+          "additionalProperties": true
+        },
+        "regime": {
+          "type": "object",
+          "description": "Regime classification inputs and outputs.",
+          "additionalProperties": true
+        },
+        "social": {
+          "type": "object",
+          "description": "Social signal. { status: 'unavailable' } when ?social=true not passed.",
+          "additionalProperties": true
+        },
+        "deluagent": {
+          "type": "object",
+          "description": "Scout/auditor/quant mirror with weights_used.",
+          "additionalProperties": true,
+          "properties": {
+            "scout": { "type": "object", "additionalProperties": true },
+            "auditor": { "type": "object", "additionalProperties": true },
+            "quant": { "type": "object", "additionalProperties": true }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "string",
+      "description": "Pre-lint narrative; source of decision.read before voice guardrails."
+    },
     "selected_timeframe": { "type": ["string", "null"], "enum": ["1h", "15m", "5m", null] },
     "pool_source": { "enum": ["primary", "gecko_alt_pool"] },
     "candle_count": { "type": "number", "minimum": 0 },
     "timestamp": { "type": "string", "format": "date-time" },
-    "oracle_version": { "const": "v23-decision-first" },
-    "observed": {
-      "type": "object",
-      "description": "Only present when ?verbose=true. Raw market block + deluagent scout/auditor/quant mirror.",
-      "additionalProperties": true
-    },
-    "summary": {
-      "type": "string",
-      "description": "Only present when ?verbose=true. Pre-lint narrative; source of decision.read."
-    }
+    "oracle_version": { "const": "v29-tiered-flywheel" }
   }
 }
