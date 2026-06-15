@@ -1,16 +1,16 @@
 ---
 name: delu-oracle
-version: 12
-description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Tiered pricing (100M+ free, 50M+ 50k DELU, Public 250k DELU). Returns a flat decision header plus verdict, score, signals, and mandate. Single CA, GET, upto scheme.
+version: 13
+description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Tiered pricing (100M+ free, 50M+ 50k DELU, Public 250k DELU). Returns a flat decision header plus verdict, score, signals, mandate, and full observed block (scout/auditor/quant mirror) in every response. Single CA, GET, upto scheme.
 ---
 
 # delu-oracle
 
 Delu Oracle is the intelligence layer for any Base trading agent. Pass one Base EVM contract address and get back a flat `decision` header an agent can act on in a single hop — `action`, `conviction`, entry/stop/size, and a one-line delu-voiced `read` — with the full cognition report (verdict, score, signals, regime context, tactician mandate) underneath for the why.
 
-Scout, auditor, and quant are computed server-side on every call — no enrichment POST body required. Social signal (checkr) is opt-in via `?social=true`.
+Scout, auditor, and quant are computed server-side on every call — no enrichment POST body required. The full `observed` block (market data, regime inputs, scout/auditor/quant mirror) is always included in the default response. Social signal (checkr) is opt-in via `?social=true`.
 
-> **v28-tiered-flywheel.** The endpoint now uses the `upto` scheme with real-time balance-based discounting. Agents sign for the 250k DELU maximum, but the handler settles for 50k (holders) or 0 (whales) based on their $DELU balance on Base.
+> **v29-tiered-flywheel.** The endpoint uses the `upto` scheme with real-time balance-based discounting. Agents sign for the 250k DELU maximum, but the handler settles for 50k (holders) or 0 (whales) based on their $DELU balance on Base. `observed` is now always present in the default response — no `?verbose=true` required.
 
 ## Endpoint
 
@@ -26,7 +26,7 @@ Base is the only supported chain — no chain parameter needed.
 |---|---|---|---|
 | `ca` | path | yes | 0x-prefixed EVM contract address (40 hex chars) |
 | `social` | query | no | Pass `?social=true` to enable checkr social enrichment (+$0.45 USDC, billed to caller) |
-| `verbose` | query | no | Pass `?verbose=true` to include the raw `observed` block + scout/auditor/quant mirror + pre-lint `summary`. Off by default. |
+| `verbose` | query | no | Accepted but no-op in v29 — `observed` and `summary` are always present in the default response. |
 
 ## The decision header — read this first
 
@@ -52,7 +52,8 @@ A simple gate: `decision.action === "ENTER" && decision.conviction >= 70 && conf
 ## Pool selection & OHLCV ladder
 
 - **Canonical pool** is chosen by `liquidity × (0.25 + min(volume_h24 / liquidity, 5))` — the pool actually trading, not the fattest dead pool. Pancakeswap pairs excluded. `pool_source` reports `primary` or `gecko_alt_pool` if a fallback re-resolution was used.
-- **OHLCV ladder**: 1h (needs ≥14 candles + finite ATR) → 15m → 5m. If the primary pool yields no usable ladder, the oracle re-resolves the canonical pool and retries. `selected_timeframe` and `candle_count` report what the read was built on. Fresh pools (<~15h old) now return a real entry/stop/size instead of nulls.
+- **OHLCV ladder**: 1h (needs ≥14 candles + finite ATR) → 15m → 5m. If the primary pool yields no usable ladder, the oracle re-resolves via gecko pro `/tokens/{ca}/pools` as a true independent fallback. `selected_timeframe` and `candle_count` report what the read was built on. Fresh pools (<~15h old) now return a real entry/stop/size instead of nulls.
+- **dexscreener 5xx retry**: pool resolver retries on 5xx (up to 2x, 500ms backoff) before falling back to gecko pro — eliminates transient dexscreener gaps on known tokens.
 
 ## Live priors
 
@@ -60,7 +61,7 @@ Quant regime weights and the volatility penalty are loaded per request from the 
 
 ## Social enrichment — opt-in two-step flow
 
-By default, social is omitted (and `observed.social` reads `{ "status": "unavailable" }` only under `?verbose=true`).
+By default, social is omitted and `observed.social` reads `{ "status": "unavailable" }`.
 
 When `?social=true` is passed, the skill executes a two-step flow:
 
@@ -114,7 +115,7 @@ All fields are optional. When provided, they override the server-side computed v
 
 ## Quant scoring — regime-adaptive weights
 
-The quant score uses regime-adaptive weights from live priors (falling back to `DEFAULT_PRIORS`). In a bull regime momentum is weighted higher; in a bear regime inflow dominates and momentum is penalised. Under `?verbose=true` the `weights_used` field in `observed.deluagent.quant` exposes what fired.
+The quant score uses regime-adaptive weights from live priors (falling back to `DEFAULT_PRIORS`). In a bull regime momentum is weighted higher; in a bear regime inflow dominates and momentum is penalised. The `weights_used` field in `observed.deluagent.quant` exposes what fired on every call.
 
 | Regime | Momentum | Volume | Inflow | Structure |
 |---|---|---|---|---|
@@ -149,10 +150,10 @@ Returns JSON with:
 - `signals.flow.net_flow_h1_pct`: h1-derived net flow percentage (buyer pressure ratio from h1 txn data)
 - `context`: regime_label, regime_confidence, base_eco_pulse, macro_pulse
 - `mandate`: action, entry_zone, stop_loss, stop_basis, size_hint_pct, size_basis, horizon, invalidations
+- `observed`: always present — `market` (price, liquidity, volume, ATR, pool age, dex), `regime`, `social`, `deluagent` (scout/auditor/quant mirror with `weights_used`)
+- `summary`: pre-lint narrative; source of `decision.read`
 - `selected_timeframe`, `candle_count`, `pool_source`: data provenance
 - `timestamp`
-
-**`?verbose=true` adds:** `observed.market` (price, liquidity, volume, ATR, pool age, dex), `observed.regime`, `observed.social`, `observed.deluagent` (scout/auditor/quant mirror), and the pre-lint `summary`.
 
 See [`references/response-schema.md`](./references/response-schema.md) for the full field-by-field schema and [`references/mandate-fields.md`](./references/mandate-fields.md) for mandate construction details.
 
@@ -181,7 +182,7 @@ The endpoint uses the `upto` scheme with real-time balance-based discounting. Ag
 
 This endpoint is x402-protected with ERC-20 token payment. Your agent's x402 client receives a `402` with payment requirements specifying 250,000 DELU on Base, signs the appropriate authorization, retries with `X-PAYMENT`, and receives the response plus an `X-PAYMENT-RESPONSE` settlement receipt. Any x402 client that supports ERC-20 token payments (Bankr, Claude + x402 MCP, x402-fetch, x402 Python SDK) implements this handshake automatically.
 
-## Example response (default, no verbose)
+## Example response (default)
 
 ```json
 {
@@ -234,15 +235,45 @@ This endpoint is x402-protected with ERC-20 token payment. Your agent's x402 cli
       "structure confirms markdown continuation"
     ]
   },
+  "observed": {
+    "market": {
+      "price_usd": 0.000412,
+      "liquidity_usd": 2330000,
+      "volume_h24": 163000,
+      "volume_h6": 41200,
+      "volume_h1": 8900,
+      "atr_pct": 2.32,
+      "pool_age_h": 312,
+      "dex": "uniswap_v3",
+      "pair_address": "0xabc...def"
+    },
+    "regime": {
+      "btc_change_24h": -1.2,
+      "eth_change_24h": -0.8,
+      "base_eco_change_24h": -0.3,
+      "macro_score": 0.48,
+      "base_eco_score": 0.51,
+      "regime_label": "MIXED",
+      "regime_confidence": 0.11
+    },
+    "social": { "status": "unavailable" },
+    "deluagent": {
+      "scout": { "viabilityScore": 62, "smartMoney": false, "capitalInflowRatio": 0.04, "buyPressure": 0.44, "bucket": "tier2" },
+      "auditor": { "verdict": "SAFE", "safetyScore": 78, "hardFail": false },
+      "quant": {
+        "finalQuantScore": 0.41,
+        "weights_used": { "momentum": 0.35, "volume": 0.30, "inflow": 0.35, "structure": 0.25 }
+      }
+    }
+  },
+  "summary": "bnkr scores 46 in a mixed regime. momentum is weak bullish on the hour but bearish on the day — divergence. structure is markdown with bearish bias. liquidity is premium at $2.33M. no clean entry.",
   "selected_timeframe": "1h",
   "pool_source": "primary",
   "candle_count": 168,
   "timestamp": "2026-06-09T00:00:00.000Z",
-  "oracle_version": "v28-tiered-flywheel"
+  "oracle_version": "v29-tiered-flywheel"
 }
 ```
-
-Pass `?verbose=true` to additionally receive `observed` (market/regime/social + scout/auditor/quant mirror) and the pre-lint `summary`.
 
 ## External client recipes
 
