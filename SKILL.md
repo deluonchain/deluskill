@@ -1,12 +1,12 @@
 ---
 name: delu-oracle
-version: 14
-description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Tiered pricing (100M+ free, 50M+ 50k DELU, Public 250k DELU). Returns a flat decision header plus verdict, score, signals, mandate, and full observed block (scout/auditor/quant mirror) in every response. Single CA, GET, upto scheme.
+version: 15
+description: Full-cognition token analysis for Base EVM tokens via the deluagent oracle. Tiered pricing (100M+ free, 50M+ 50k DELU, Public 250k DELU). Returns a flat decision header plus verdict, score, signals, mandate, and full observed block (scout/auditor/quant mirror) in every response. Single CA or cashtag, GET, upto scheme.
 ---
 
 # delu-oracle
 
-Delu Oracle is the intelligence layer for any Base trading agent. Pass one Base EVM contract address and get back a flat `decision` header an agent can act on in a single hop — `action`, `conviction`, entry/stop/size, and a one-line delu-voiced `read` — with the full cognition report (verdict, score, signals, regime context, tactician mandate) underneath for the why.
+Delu Oracle is the intelligence layer for any Base trading agent. Pass one Base EVM contract address (or cashtag like $BNKR) and get back a flat `decision` header an agent can act on in a single hop — `action`, `conviction`, entry/stop/size, and a one-line delu-voiced `read` — with the full cognition report (verdict, score, signals, regime context, tactician mandate) underneath for the why.
 
 Scout, auditor, and quant are computed server-side on every call — no enrichment POST body required. The full `observed` block (market data, regime inputs, scout/auditor/quant mirror) is always included in the default response. Social signal (checkr) is opt-in via `?social=true`.
 
@@ -24,7 +24,7 @@ Base is the only supported chain — no chain parameter needed.
 
 | Parameter | Location | Required | Notes |
 |---|---|---|---|
-| `ca` | path | yes | 0x-prefixed EVM contract address (40 hex chars) |
+| `ca` | path | yes | A 0x-prefixed EVM contract address **or** a cashtag / token symbol (e.g. `$BNKR`, `$DELU`, `BNKR`). If a symbol matches multiple tokens with significant liquidity, the oracle returns an error asking for the CA directly. |
 | `social` | query | no | Pass `?social=true` to enable checkr social enrichment (+$0.45 USDC, billed to caller) |
 | `verbose` | query | no | Accepted but no-op in v29 — `observed` and `summary` are always present in the default response. |
 
@@ -200,7 +200,7 @@ See [`references/response-schema.md`](./references/response-schema.md) for the f
 
 | Status | Meaning |
 |---|---|
-| `400` | Bad `ca` value, malformed address, or no supported Base pair found |
+| `400` | Bad `ca` value, symbol not found on Base, ambiguous symbol (provide CA directly), or no supported Base pair found |
 | `402` | Payment required, missing payment, invalid payment, or failed settlement. **If you see `402 Payment could not be verified` on a retry loop, you are likely calling in parallel — switch to sequential.** |
 | `404` | Unknown token or no reportable token data found |
 | `5xx` | Oracle or upstream service failure — retry later |
