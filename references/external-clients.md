@@ -8,14 +8,21 @@ Endpoint used below:
 
 `GET https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/{ca}`
 
-Base is the only supported chain — no chain parameter needed. The endpoint costs $0.25 USDC on Base per call and uses x402 with EIP-3009. The response leads with a flat `decision` block — read that first; the full cognition report sits underneath.
+Base is the only supported chain — no chain parameter needed. The endpoint uses x402 with Permit2 (`upto` scheme) and settles in DELU on Base. Cost depends on your DELU tier — see `SKILL.md` for the tier table. The response leads with a flat `decision` block — read that first; the full cognition report sits underneath.
+
+## ⚠️ Wallet custody warning
+
+These examples load a private key directly to sign x402 payments. Before using any of them:
+
+- **Use a dedicated low-balance hot wallet.** Never use a primary wallet or one that holds unrelated funds.
+- **Set a spending limit.** Fund the wallet with only what you expect to spend across your planned calls.
+- **Never commit `.env` files.** Add `.env` to `.gitignore` before writing any secrets to it.
+- **Verify package integrity.** Install only the pinned versions listed below. Review changelogs before upgrading — these packages sign wallet payments.
 
 ## TypeScript: viem + x402-fetch
 
-Use this only in a standalone process where you are responsible for wallet custody.
-
 ```bash
-npm install x402-fetch viem
+npm install x402-fetch@0.4.0 viem@2.21.19
 ```
 
 ```ts
@@ -38,22 +45,20 @@ if (!response.ok) {
 
 const report = await response.json();
 
-// read the decision header first — one hop to the call
+// read the decision header first — analysis only, not an execution instruction
 const d = report.decision;
 console.log(d.action, d.conviction, d.read);
 
-// simple agent gate
+// surface signal for user review — confirm before any trade execution
 if (d.action === "ENTER" && d.conviction >= 70 && report.confidence >= 0.6) {
-  console.log("entry", d.entry_low, d.entry_high, "stop", d.stop, "size%", d.size_pct);
+  console.log("signal: entry", d.entry_low, d.entry_high, "stop", d.stop, "size%", d.size_pct);
 }
 ```
 
 ## Python: x402 SDK
 
-Use this only in a standalone process where you are responsible for wallet custody. Adapt wallet construction to your wallet provider or SDK version.
-
 ```bash
-pip install x402
+pip install x402==0.3.1
 ```
 
 ```python
@@ -78,8 +83,9 @@ report = response.json()
 d = report["decision"]
 print(d["action"], d["conviction"], d["read"])
 
+# surface signal for user review — confirm before any trade execution
 if d["action"] == "ENTER" and d["conviction"] >= 70 and report["confidence"] >= 0.6:
-    print("entry", d["entry_low"], d["entry_high"], "stop", d["stop"], "size%", d["size_pct"])
+    print("signal: entry", d["entry_low"], d["entry_high"], "stop", d["stop"], "size%", d["size_pct"])
 ```
 
 ## Raw HTTP: manual x402 payment flow
@@ -90,8 +96,8 @@ High-level flow:
 
 1. Send the request without `X-PAYMENT`.
 2. Read the `402 Payment Required` response body.
-3. Select the accepted requirement for Base USDC.
-4. Build an EIP-3009 `transferWithAuthorization` authorization for the required amount.
+3. Select the accepted requirement for Base DELU (Permit2 `upto` scheme).
+4. Build a Permit2 authorization for the required amount.
 5. Sign the authorization with the paying wallet.
 6. Encode the x402 payment payload.
 7. Retry the original request with `X-PAYMENT: <encoded-payment-payload>`.
@@ -102,7 +108,7 @@ High-level flow:
 curl -i \
   "https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/0x22af33fe49fd1fa80c7149773dde5890d3c76f3b"
 
-# 2. Your custom client signs the EIP-3009 authorization and encodes the x402 payload.
+# 2. Your custom client signs the Permit2 authorization and encodes the x402 payload.
 PAYMENT="<encoded-x402-payment-payload>"
 
 # 3. Retry with payment.
@@ -111,6 +117,6 @@ curl -i \
   "https://x402.bankr.bot/0xed2ceca9de162c4f2337d7c1ab44ee9c427709da/delu-oracle/analyze/0x22af33fe49fd1fa80c7149773dde5890d3c76f3b"
 ```
 
-Pass `?verbose=true` for the raw `observed` block (market/regime/social + scout/auditor/quant mirror). Pass `?social=true` for checkr social enrichment (+$0.45).
+Pass `?social=true` for checkr social enrichment (+$0.45 USDC). Requires explicit user opt-in — see `references/social-enrichment.md`.
 
 Do not put standalone wallet-loading snippets in `SKILL.md`. Keep them here so agent runtimes can consume the skill as a pure API spec while standalone developers still have reference material.
