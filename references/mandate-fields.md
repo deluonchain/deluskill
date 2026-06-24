@@ -1,6 +1,8 @@
 # delu-oracle — Tactician Mandate Fields
 
-The `mandate` block is the actionable output: where to enter, where to stop, how much to size, and over what horizon. It is regenerated on every call and reflects current price, ATR, regime, and confidence.
+The `mandate` block is the analytical output: where the oracle sees entry, where it places the stop, how much it suggests sizing, and over what horizon. It is regenerated on every call and reflects current price, ATR, regime, and confidence.
+
+**The mandate is analysis — not an execution instruction.** Any swap, trade, approval, transfer, or position change based on mandate fields requires explicit user confirmation, including token, amount, slippage, chain, and max loss, before execution.
 
 ## Fields
 
@@ -8,7 +10,7 @@ The `mandate` block is the actionable output: where to enter, where to stop, how
 |---|---|---|
 | `entry_zone` | [number, number] | Lower/upper bound for entry. ATR-based — typically current price ± 0.25 × ATR. |
 | `stop_loss` | number | Hard invalidation price. ATR-multiplied stop below entry mid. Multiplier scales with verdict conviction. |
-| `size_hint_pct` | number | Suggested position size as % of portfolio. Kelly-lite formula tilted by regime and confidence. Clamped to `[0.5, 10.0]`. |
+| `size_hint_pct` | number | Suggested position size as % of portfolio. Kelly-lite formula tilted by regime and confidence. Clamped to `[0.5, 10.0]`. A suggestion only — confirm with user before applying. |
 | `horizon` | string | Time-to-target window. Regime-keyed (see table below). |
 | `invalidations` | string[] | English-form conditions that void the mandate (structure break, regime flip, etc.). Never includes liquidity thresholds. |
 

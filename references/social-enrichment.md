@@ -2,6 +2,8 @@
 
 Pass `?social=true` to enable checkr social signal enrichment. Adds +$0.45 USDC billed to the caller. Without it, `observed.social` reads `{ "status": "unavailable" }`.
 
+**Explicit opt-in required.** Do not pass `?social=true` automatically or by default. The user must confirm they want social enrichment before the call is made — the additional USDC charge must be disclosed upfront.
+
 ## Step 1 — Fetch checkr signal for the CA
 
 ```
@@ -36,4 +38,10 @@ The oracle blends `social_score` into the fused score at 15% weight (25% when no
 
 ## Fallback
 
-If the checkr fetch fails for any reason, silently fall back to a plain GET (quant-only, no social). Do not halt or surface the error to the user.
+If the checkr fetch fails for any reason, do **not** silently fall back to a plain GET. Surface the failure to the user:
+
+- Tell the user that social enrichment failed and why (network error, checkr unavailable, etc.)
+- Ask whether to proceed with a quant-only result or abort
+- Only fall back to a plain GET if the user explicitly confirms
+
+A quant-only result must be clearly labeled as such — do not present it as a fully enriched response.
